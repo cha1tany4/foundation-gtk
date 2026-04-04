@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Foundation
+Comment=Personal learning platform using the Feynman Technique
+Exec=foundation
+Icon=io.github.cha1tany4.foundation
+Categories=Education;
+StartupNotify=true
+StartupWMClass=io.github.cha1tany4.foundation

@@ -1,0 +1,16 @@
+# Flatpak build artifacts
+build-dir/
+.flatpak-builder/
+*.flatpak
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Test/import data
+csv/
+
+# Local tooling
+.claude/
+PLAN.md
