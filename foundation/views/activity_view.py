@@ -116,8 +116,12 @@ def _make_review_factory() -> Gtk.SignalListItemFactory:
         a = item.get_item().activity
         stack = item.get_child()
         if a.lesson_source_url:
+            url = a.lesson_source_url
+            # Raw file paths (legacy data) must be converted to file:// URIs.
+            if url.startswith("/"):
+                url = Gio.File.new_for_path(url).get_uri()
             link = stack.get_child_by_name("link")
-            link.set_uri(a.lesson_source_url)
+            link.set_uri(url)
             link.set_label(a.lesson_title or a.lesson_source_url)
             stack.set_visible_child_name("link")
         else:

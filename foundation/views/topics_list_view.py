@@ -12,8 +12,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 from foundation.models.topic import Topic
-from foundation.models.course import Course
-from foundation.models.lesson import Lesson
+from foundation.db.connection import get_connection
 from foundation.views._nav import build_nav_header
 
 
@@ -107,6 +106,20 @@ class TopicsListPage(Adw.NavigationPage):
             self._content_box.append(self._status_page)
             return
 
+        # One aggregation query for all topics — avoids N+1.
+        conn = get_connection()
+        count_rows = conn.execute("""
+            SELECT t.id AS topic_id,
+                   COUNT(DISTINCT c.id) AS course_count,
+                   COUNT(l.id)          AS lesson_count
+            FROM topics t
+            LEFT JOIN courses c ON c.topic_id = t.id
+            LEFT JOIN lessons l ON l.course_id = c.id
+            GROUP BY t.id
+        """).fetchall()
+        conn.close()
+        counts = {r["topic_id"]: (r["course_count"], r["lesson_count"]) for r in count_rows}
+
         # Remove all current rows from the list box before repopulating.
         row = self._list_box.get_first_child()
         while row:
@@ -115,18 +128,12 @@ class TopicsListPage(Adw.NavigationPage):
             row = nxt
 
         for topic in topics:
-            self._list_box.append(self._build_topic_row(topic))
+            self._list_box.append(self._build_topic_row(topic, counts))
 
         self._content_box.append(self._list_box)
 
-    def _build_topic_row(self, topic: Topic) -> Adw.ActionRow:
-        # Fetch courses and lesson counts for the subtitle.
-        # This is N+1 queries but acceptable for a personal app with small data.
-        courses = Course.for_topic(topic.id)
-        total_lessons = sum(len(Lesson.for_course(c.id)) for c in courses)
-
-        nc = len(courses)
-        nl = total_lessons
+    def _build_topic_row(self, topic: Topic, counts: dict) -> Adw.ActionRow:
+        nc, nl = counts.get(topic.id, (0, 0))
         subtitle = f"{nc} course{'s' if nc != 1 else ''} · {nl} lesson{'s' if nl != 1 else ''}"
 
         row = Adw.ActionRow()

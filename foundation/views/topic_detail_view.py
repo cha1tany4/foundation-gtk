@@ -14,7 +14,7 @@ from gi.repository import Gtk, Adw
 
 from foundation.models.topic import Topic
 from foundation.models.course import Course
-from foundation.models.lesson import Lesson
+from foundation.db.connection import get_connection
 
 
 class TopicDetailPage(Adw.NavigationPage):
@@ -119,6 +119,19 @@ class TopicDetailPage(Adw.NavigationPage):
         group = Adw.PreferencesGroup(title="Courses")
         self._content_box.append(group)
 
+        # One aggregation query for all courses — avoids N+1.
+        course_ids = [c.id for c in courses]
+        placeholders = ",".join("?" * len(course_ids))
+        conn = get_connection()
+        rows = conn.execute(
+            f"SELECT course_id, COUNT(*) AS total, "
+            f"SUM(completed_at IS NOT NULL) AS done "
+            f"FROM lessons WHERE course_id IN ({placeholders}) GROUP BY course_id",
+            course_ids,
+        ).fetchall()
+        conn.close()
+        lesson_counts = {r["course_id"]: (r["total"], r["done"]) for r in rows}
+
         # GtkListBox inside the PreferencesGroup so rows get the boxed-list style.
         list_box = Gtk.ListBox()
         list_box.set_selection_mode(Gtk.SelectionMode.NONE)
@@ -127,12 +140,10 @@ class TopicDetailPage(Adw.NavigationPage):
         group.add(list_box)
 
         for course in courses:
-            list_box.append(self._build_course_card(course))
+            list_box.append(self._build_course_card(course, lesson_counts))
 
-    def _build_course_card(self, course: Course) -> Adw.ActionRow:
-        lessons = Lesson.for_course(course.id)
-        total = len(lessons)
-        completed = sum(1 for l in lessons if l.completed())
+    def _build_course_card(self, course: Course, lesson_counts: dict) -> Adw.ActionRow:
+        total, completed = lesson_counts.get(course.id, (0, 0))
 
         row = Adw.ActionRow()
         row.set_use_markup(False)  # course titles/descriptions may contain & or < characters

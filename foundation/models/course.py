@@ -98,15 +98,19 @@ class Course:
         Call this after any lesson state change (start or complete).
         Does nothing if the course has no lessons.
         """
-        # Avoid a circular import — Lesson imports Course, so we import here.
-        from foundation.models.lesson import Lesson
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT COUNT(*) AS total, SUM(completed_at IS NOT NULL) AS done "
+            "FROM lessons WHERE course_id = ?",
+            (self.id,),
+        ).fetchone()
+        total, done = row["total"], row["done"]
 
-        lessons = Lesson.for_course(self.id)
-        if not lessons:
+        if total == 0:
+            conn.close()
             return
 
-        all_done = all(l.completed() for l in lessons)
-        conn = get_connection()
+        all_done = (done == total)
 
         if all_done and not self.completed():
             # All lessons just became complete — stamp the course.

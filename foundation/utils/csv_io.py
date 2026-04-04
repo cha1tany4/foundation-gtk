@@ -111,11 +111,11 @@ def _do_import_subjects(folder_path: str) -> dict:
                 "INSERT INTO topics (title, description) VALUES (?, ?)",
                 (title, description),
             )
-            conn.commit()
-
             if old_id:
                 topic_id_map[old_id] = cur.lastrowid
             counts["topics"] += 1
+
+    conn.commit()
 
     # --- Courses ---
     with open(os.path.join(folder_path, "courses.csv"), newline="", encoding="utf-8") as f:
@@ -139,11 +139,11 @@ def _do_import_subjects(folder_path: str) -> dict:
                 "INSERT INTO courses (topic_id, title, description, completed_at) VALUES (?, ?, ?, ?)",
                 (new_topic_id, title, description, completed_at),
             )
-            conn.commit()
-
             if old_id:
                 course_id_map[old_id] = cur.lastrowid
             counts["courses"] += 1
+
+    conn.commit()
 
     # --- Lessons ---
     with open(os.path.join(folder_path, "lessons.csv"), newline="", encoding="utf-8") as f:
@@ -180,9 +180,9 @@ def _do_import_subjects(folder_path: str) -> dict:
                 (new_course_id, title, content_type, source_url, content,
                  feynman_notes, started_at, completed_at),
             )
-            conn.commit()
             counts["lessons"] += 1
 
+    conn.commit()
     conn.close()
     return counts
 
@@ -308,7 +308,7 @@ def import_bookmarks(window, refresh) -> None:
             if skipped > 0:
                 window.show_toast(
                     f"Imported {imported} bookmarks. "
-                    f"{skipped} skipped (16-bookmark cap reached)."
+                    f"{skipped} skipped ({MAX_BOOKMARKS}-bookmark cap reached)."
                 )
             else:
                 window.show_toast(f"Imported {imported} bookmarks.")
@@ -359,9 +359,9 @@ def _do_import_bookmarks(file_path: str) -> tuple[int, int]:
                 "INSERT INTO bookmarks (name, url, position) VALUES (?, ?, ?)",
                 (name, url, position),
             )
-            conn.commit()
             imported += 1
 
+    conn.commit()
     conn.close()
     return imported, skipped
 

@@ -12,6 +12,8 @@
 import html.parser
 import re
 import markdown
+
+_WHITESPACE_RE = re.compile(r"\s+")
 import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Pango
@@ -176,7 +178,7 @@ class _HTMLParser(html.parser.HTMLParser):
     def handle_data(self, data):
         if not self._in_pre:
             # Collapse multiple whitespace characters outside <pre>.
-            data = re.sub(r"\s+", " ", data)
+            data = _WHITESPACE_RE.sub(" ", data)
         self._buf.insert(self._buf.get_end_iter(), data)
 
 

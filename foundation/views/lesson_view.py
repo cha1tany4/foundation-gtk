@@ -440,8 +440,8 @@ class LessonViewPage(Adw.NavigationPage):
     def _on_open_url(self, _btn, url: str):
         """Open the lesson's source URL in the system default application."""
         try:
-            if "://" not in url:
-                url = "file://" + url
+            if url.startswith("/"):
+                url = Gio.File.new_for_path(url).get_uri()
             Gio.AppInfo.launch_default_for_uri(url, None)
         except Exception:
             self._window.show_toast("Could not open the resource.")
@@ -452,8 +452,8 @@ class LessonViewPage(Adw.NavigationPage):
         if self._lesson.has_url() and self._lesson.source_url:
             try:
                 url = self._lesson.source_url
-                if "://" not in url:
-                    url = "file://" + url
+                if url.startswith("/"):
+                    url = Gio.File.new_for_path(url).get_uri()
                 Gio.AppInfo.launch_default_for_uri(url, None)
             except Exception:
                 pass
