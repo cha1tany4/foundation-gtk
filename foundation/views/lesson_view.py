@@ -1,14 +1,18 @@
 # The lesson reading/completion page.
 #
 # Layout:
-#   Top:    lesson content (WebView for text, status page + link for URLs)
-#   Bottom: action area that switches based on lesson state:
-#             pending   — "Start Lesson" button
-#             started   — Feynman notes text input + character count + submit button
-#             completed — notes display (WebView) with an optional edit mode
+#   Gtk.Paned (VERTICAL, ~50/50)
+#   ├── top:    lesson content
+#   │     TEXT    → ScrolledWindow → WebView (or styled TextView fallback)
+#   │     URL     → centred box with type icon + LinkButton (no scroll)
+#   └── bottom: action area switching on lesson state:
+#                 pending   — "Start Lesson" button
+#                 started   — Feynman notes input + char count + submit
+#                 completed — notes display (WebView/TextView) + optional edit
 #
-# WebKit2 is used for rendering Markdown. If it is not installed, a plain
-# text fallback is shown instead. Install with: sudo apt install gir1.2-webkit2-4.1
+# WebKit2 4.1 is used for rendering Markdown when available (e.g. local run).
+# In environments where it is absent (Flatpak), render_to_buffer() applies
+# TextTags directly so headings, bold, italic, and code are still formatted.
 #
 # State constants (used as GtkStack page names):
 _PENDING   = "pending"
@@ -18,7 +22,7 @@ _COMPLETED = "completed"
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, Gio
+from gi.repository import Gtk, Adw, Gio, GLib
 
 try:
     gi.require_version("WebKit2", "4.1")
@@ -27,9 +31,18 @@ try:
 except (ValueError, ImportError):
     HAS_WEBKIT = False
 
-from foundation.models.lesson import Lesson, TEXT_CONTENT, FEYNMAN_MIN_CHARS
+from foundation.models.lesson import (
+    Lesson, TEXT_CONTENT, VIDEO, PDF, EXTERNAL_LINK, FEYNMAN_MIN_CHARS
+)
 from foundation.db.settings import Settings
-from foundation.utils.markdown_renderer import render
+from foundation.utils.markdown_renderer import render, render_to_buffer
+
+# Per-type icons used in the top pane for URL-based lessons.
+_TYPE_ICON = {
+    VIDEO:         "media-playback-start-symbolic",
+    PDF:           "document-open-symbolic",
+    EXTERNAL_LINK: "web-browser-symbolic",
+}
 
 
 class LessonViewPage(Adw.NavigationPage):
@@ -79,7 +92,6 @@ class LessonViewPage(Adw.NavigationPage):
         self._header.pack_end(menu_btn)
 
         # "Update Explanation" button — only visible when the lesson is completed.
-        # Toggles the notes area between display and edit mode.
         self._toggle_notes_btn = Gtk.Button(label="Update Explanation")
         self._toggle_notes_btn.add_css_class("flat")
         self._toggle_notes_btn.connect("clicked", self._on_toggle_notes_edit)
@@ -88,74 +100,120 @@ class LessonViewPage(Adw.NavigationPage):
 
         toolbar_view.add_top_bar(self._header)
 
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        toolbar_view.set_content(scrolled)
+        # Split the page into top (content) and bottom (Feynman/action) halves.
+        paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
+        paned.set_vexpand(True)
+        paned.set_wide_handle(False)
+        paned.set_shrink_start_child(False)
+        paned.set_shrink_end_child(False)
+        toolbar_view.set_content(paned)
 
-        self._page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        scrolled.set_child(self._page_box)
+        paned.set_start_child(self._build_content_section())
+        paned.set_end_child(self._build_action_section())
 
-        self._build_content_section()
-        self._build_action_section()
+        # Set the divider to 50 % of the available height once the widget is
+        # on screen. GLib.idle_add defers until after the first allocation.
+        def _set_pos(p):
+            h = p.get_height()
+            if h > 0:
+                p.set_position(h // 2)
+            return False
+        paned.connect("realize", lambda p: GLib.idle_add(_set_pos, p))
 
-    def _build_content_section(self):
-        """Build the top area that shows the lesson material."""
+    def _build_content_section(self) -> Gtk.Widget:
+        """Build the top pane that shows the lesson material."""
         if self._lesson.content_type == TEXT_CONTENT:
             if HAS_WEBKIT:
+                scrolled = Gtk.ScrolledWindow()
+                scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+                scrolled.set_vexpand(True)
                 self._content_webview = WebKit2.WebView()
-                self._content_webview.set_size_request(-1, 320)
+                self._content_webview.set_vexpand(True)
                 self._content_webview.load_html(render(self._lesson.content or ""), None)
-                self._page_box.append(self._content_webview)
+                scrolled.set_child(self._content_webview)
+                return scrolled
             else:
-                # Fallback when WebKit2 is not installed.
-                frame = Gtk.Frame()
-                frame.set_margin_top(12)
-                frame.set_margin_start(12)
-                frame.set_margin_end(12)
+                scrolled = Gtk.ScrolledWindow()
+                scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+                scrolled.set_vexpand(True)
                 tv = Gtk.TextView()
                 tv.set_editable(False)
+                tv.set_cursor_visible(False)
+                tv.set_cursor(None)
                 tv.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-                tv.set_size_request(-1, 280)
-                tv.get_buffer().set_text(self._lesson.content or "(no content)")
-                frame.set_child(tv)
-                self._page_box.append(frame)
+                tv.set_top_margin(12)
+                tv.set_bottom_margin(12)
+                tv.set_left_margin(16)
+                tv.set_right_margin(16)
+                tv.set_vexpand(True)
+                render_to_buffer(self._lesson.content or "", tv.get_buffer())
+                scrolled.set_child(tv)
+                return scrolled
         else:
-            # URL-based lesson — show the link; content is opened in system browser.
+            # URL-based lesson — show a centred icon + link; no scroll needed.
             type_label = self._lesson.content_type_label()
-            status = Adw.StatusPage()
-            status.set_title(self._lesson.title)
-            status.set_description(f"This lesson is a {type_label}.")
-            status.set_icon_name("applications-internet-symbolic")
+            icon_name = _TYPE_ICON.get(self._lesson.content_type, "web-browser-symbolic")
+
+            outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            outer.set_vexpand(True)
+            outer.set_valign(Gtk.Align.CENTER)
+            outer.set_halign(Gtk.Align.CENTER)
+            outer.set_margin_top(24)
+            outer.set_margin_bottom(24)
+            outer.set_margin_start(24)
+            outer.set_margin_end(24)
+
+            icon = Gtk.Image.new_from_icon_name(icon_name)
+            icon.set_pixel_size(64)
+            icon.add_css_class("dim-label")
+            outer.append(icon)
+
+            title_lbl = Gtk.Label(label=self._lesson.title)
+            title_lbl.add_css_class("title-2")
+            title_lbl.set_wrap(True)
+            title_lbl.set_justify(Gtk.Justification.CENTER)
+            outer.append(title_lbl)
+
+            type_lbl = Gtk.Label(label=type_label)
+            type_lbl.add_css_class("dim-label")
+            outer.append(type_lbl)
 
             if self._lesson.source_url:
-                link_btn = Gtk.LinkButton.new_with_label(
-                    self._lesson.source_url, f"Open {type_label}"
-                )
-                link_btn.set_halign(Gtk.Align.CENTER)
-                status.set_child(link_btn)
+                open_btn = Gtk.Button(label=f"Open {type_label}")
+                open_btn.add_css_class("suggested-action")
+                open_btn.add_css_class("pill")
+                open_btn.set_halign(Gtk.Align.CENTER)
+                open_btn.connect("clicked", self._on_open_url, self._lesson.source_url)
+                outer.append(open_btn)
 
-            self._page_box.append(status)
+            return outer
 
-    def _build_action_section(self):
-        """Build the bottom area; three panels managed by a GtkStack."""
+    def _build_action_section(self) -> Gtk.Widget:
+        """Build the bottom pane; three panels managed by a GtkStack."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.set_vexpand(True)
+
         sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        sep.set_margin_top(8)
-        self._page_box.append(sep)
+        box.append(sep)
 
         self._action_stack = Gtk.Stack()
         self._action_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self._page_box.append(self._action_stack)
+        self._action_stack.set_vexpand(True)
+        box.append(self._action_stack)
 
         self._action_stack.add_named(self._build_pending_panel(), _PENDING)
         self._action_stack.add_named(self._build_active_panel(), _ACTIVE)
         self._action_stack.add_named(self._build_completed_panel(), _COMPLETED)
 
         self._sync_action_state()
+        return box
 
     def _build_pending_panel(self) -> Gtk.Widget:
         """Panel shown before the lesson is started."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.set_halign(Gtk.Align.CENTER)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_vexpand(True)
         box.set_margin_top(24)
         box.set_margin_bottom(24)
 
@@ -175,8 +233,9 @@ class LessonViewPage(Adw.NavigationPage):
     def _build_active_panel(self) -> Gtk.Widget:
         """Panel shown while the lesson is in progress — Feynman notes input."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        box.set_margin_top(16)
-        box.set_margin_bottom(16)
+        box.set_vexpand(True)
+        box.set_margin_top(12)
+        box.set_margin_bottom(12)
         box.set_margin_start(12)
         box.set_margin_end(12)
 
@@ -192,9 +251,10 @@ class LessonViewPage(Adw.NavigationPage):
         box.append(hint_lbl)
 
         tv_frame = Gtk.Frame()
+        tv_frame.set_vexpand(True)
         tv_scroll = Gtk.ScrolledWindow()
         tv_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        tv_scroll.set_min_content_height(140)
+        tv_scroll.set_vexpand(True)
         self._feynman_view = Gtk.TextView()
         self._feynman_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self._feynman_view.set_top_margin(8)
@@ -205,11 +265,13 @@ class LessonViewPage(Adw.NavigationPage):
         tv_frame.set_child(tv_scroll)
         box.append(tv_frame)
 
-        # Character count label and submit button in a row at the bottom.
+        # Character count label and submit button.
         bottom_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         bottom_row.set_margin_top(4)
 
-        self._char_count_label = Gtk.Label(label=f"0 / {Settings.get_int('feynman_min_chars', FEYNMAN_MIN_CHARS)} characters minimum")
+        self._char_count_label = Gtk.Label(
+            label=f"0 / {Settings.get_int('feynman_min_chars', FEYNMAN_MIN_CHARS)} characters minimum"
+        )
         self._char_count_label.add_css_class("dim-label")
         self._char_count_label.set_hexpand(True)
         self._char_count_label.set_xalign(0)
@@ -217,13 +279,12 @@ class LessonViewPage(Adw.NavigationPage):
 
         self._submit_btn = Gtk.Button(label="Mark as Done")
         self._submit_btn.add_css_class("suggested-action")
-        self._submit_btn.set_sensitive(False)   # enabled only when char count >= minimum
+        self._submit_btn.set_sensitive(False)
         self._submit_btn.connect("clicked", self._on_submit)
         bottom_row.append(self._submit_btn)
 
         box.append(bottom_row)
 
-        # Update the char count label every time the text buffer changes.
         self._feynman_view.get_buffer().connect("changed", self._on_feynman_text_changed)
 
         return box
@@ -231,8 +292,9 @@ class LessonViewPage(Adw.NavigationPage):
     def _build_completed_panel(self) -> Gtk.Widget:
         """Panel shown after the lesson is completed — notes display with edit mode."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        box.set_margin_top(16)
-        box.set_margin_bottom(16)
+        box.set_vexpand(True)
+        box.set_margin_top(12)
+        box.set_margin_bottom(12)
         box.set_margin_start(12)
         box.set_margin_end(12)
 
@@ -244,27 +306,39 @@ class LessonViewPage(Adw.NavigationPage):
         # Inner stack switches between "display" (read) and "edit" (write) modes.
         self._notes_stack = Gtk.Stack()
         self._notes_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self._notes_stack.set_vexpand(True)
         box.append(self._notes_stack)
 
-        # Display page: rendered WebView (or plain text fallback).
+        # Display page: rendered WebView (or styled TextView fallback).
         if HAS_WEBKIT:
             self._notes_display_webview = WebKit2.WebView()
-            self._notes_display_webview.set_size_request(-1, 200)
+            self._notes_display_webview.set_vexpand(True)
             self._notes_stack.add_named(self._notes_display_webview, "display")
         else:
+            disp_scroll = Gtk.ScrolledWindow()
+            disp_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            disp_scroll.set_vexpand(True)
             notes_tv = Gtk.TextView()
             notes_tv.set_editable(False)
+            notes_tv.set_cursor_visible(False)
+            notes_tv.set_cursor(None)
             notes_tv.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-            notes_tv.set_size_request(-1, 200)
+            notes_tv.set_top_margin(8)
+            notes_tv.set_bottom_margin(8)
+            notes_tv.set_left_margin(8)
+            notes_tv.set_right_margin(8)
+            notes_tv.set_vexpand(True)
             self._notes_display_fallback = notes_tv
-            self._notes_stack.add_named(notes_tv, "display")
+            disp_scroll.set_child(notes_tv)
+            self._notes_stack.add_named(disp_scroll, "display")
 
-        # Edit page: text input with save/cancel buttons.
+        # Edit page: text input with char count and save/cancel buttons.
         edit_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        edit_box.set_vexpand(True)
 
         edit_scroll = Gtk.ScrolledWindow()
         edit_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        edit_scroll.set_min_content_height(180)
+        edit_scroll.set_vexpand(True)
         self._notes_edit_view = Gtk.TextView()
         self._notes_edit_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self._notes_edit_view.set_top_margin(8)
@@ -274,10 +348,13 @@ class LessonViewPage(Adw.NavigationPage):
         edit_scroll.set_child(self._notes_edit_view)
 
         edit_frame = Gtk.Frame()
+        edit_frame.set_vexpand(True)
         edit_frame.set_child(edit_scroll)
         edit_box.append(edit_frame)
 
-        self._notes_char_label = Gtk.Label(label=f"0 / {Settings.get_int('feynman_min_chars', FEYNMAN_MIN_CHARS)} characters minimum")
+        self._notes_char_label = Gtk.Label(
+            label=f"0 / {Settings.get_int('feynman_min_chars', FEYNMAN_MIN_CHARS)} characters minimum"
+        )
         self._notes_char_label.add_css_class("dim-label")
         self._notes_char_label.set_xalign(0)
         edit_box.append(self._notes_char_label)
@@ -324,7 +401,7 @@ class LessonViewPage(Adw.NavigationPage):
         if HAS_WEBKIT and hasattr(self, "_notes_display_webview"):
             self._notes_display_webview.load_html(render(notes, notes=True), None)
         elif hasattr(self, "_notes_display_fallback"):
-            self._notes_display_fallback.get_buffer().set_text(notes)
+            render_to_buffer(notes, self._notes_display_fallback.get_buffer(), notes=True)
         self._notes_stack.set_visible_child_name("display")
         self._notes_edit_mode = False
         self._toggle_notes_btn.set_label("Update Explanation")
@@ -360,14 +437,21 @@ class LessonViewPage(Adw.NavigationPage):
     def _on_cancel_notes_edit(self, _btn):
         self._refresh_notes_display()
 
+    def _on_open_url(self, _btn, url: str):
+        """Open the lesson's source URL in the system default application."""
+        try:
+            if "://" not in url:
+                url = "file://" + url
+            Gio.AppInfo.launch_default_for_uri(url, None)
+        except Exception:
+            self._window.show_toast("Could not open the resource.")
+
     def _on_start(self, _btn):
         """Stamp started_at and open the external resource if applicable."""
         self._lesson.start()
         if self._lesson.has_url() and self._lesson.source_url:
             try:
                 url = self._lesson.source_url
-                # Bare file paths (e.g. from the Rails import) have no scheme.
-                # launch_default_for_uri requires a URI, so prepend file:// for those.
                 if "://" not in url:
                     url = "file://" + url
                 Gio.AppInfo.launch_default_for_uri(url, None)
@@ -408,7 +492,6 @@ class LessonViewPage(Adw.NavigationPage):
         self._window.nav_view.push(page)
 
     def _after_edit(self):
-        # Re-fetch from DB to pick up any changes made in the form.
         updated = Lesson.find(self._lesson.id)
         if updated:
             self._lesson = updated

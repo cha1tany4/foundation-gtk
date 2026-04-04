@@ -155,6 +155,7 @@ class ActivityLogPage(Adw.NavigationPage):
         toolbar_view.set_content(scrolled)
 
         self._outer_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self._outer_box.set_vexpand(True)
         scrolled.set_child(self._outer_box)
 
         # Empty-state page — shown when there are no activities yet.
@@ -162,6 +163,7 @@ class ActivityLogPage(Adw.NavigationPage):
         self._status_page.set_title("No Activity Yet")
         self._status_page.set_description("Completed lessons will appear here as your study history.")
         self._status_page.set_icon_name("document-open-recent-symbolic")
+        self._status_page.set_vexpand(True)
 
         # The ListStore holds ActivityItem objects.
         # Gtk.NoSelection means rows are not selectable (read-only log).

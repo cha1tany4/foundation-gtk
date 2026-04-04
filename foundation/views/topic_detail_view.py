@@ -90,6 +90,13 @@ class TopicDetailPage(Adw.NavigationPage):
             self._content_box.remove(child)
             child = nxt
 
+        title_lbl = Gtk.Label(label=self._topic.title)
+        title_lbl.add_css_class("title-1")
+        title_lbl.set_xalign(0)
+        title_lbl.set_margin_start(4)
+        title_lbl.set_margin_bottom(4)
+        self._content_box.append(title_lbl)
+
         if self._topic.description:
             desc = Gtk.Label(label=self._topic.description)
             desc.set_wrap(True)
@@ -105,6 +112,7 @@ class TopicDetailPage(Adw.NavigationPage):
             status.set_title("No Courses Yet")
             status.set_description("Add your first course to start building this subject.")
             status.set_icon_name("folder-open-symbolic")
+            status.set_vexpand(True)
             self._content_box.append(status)
             return
 

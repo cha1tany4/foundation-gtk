@@ -12,7 +12,6 @@
 # SETTINGS KEYS:
 #   color_scheme        "0"=Follow System, "1"=Light, "2"=Dark
 #   feynman_min_chars   integer string, default "50"
-#   bookmark_columns    "2", "3", "4", or "6", default "4"
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -30,10 +29,6 @@ _SCHEME_MAP = [
     Adw.ColorScheme.PREFER_LIGHT,
     Adw.ColorScheme.PREFER_DARK,
 ]
-
-# Bookmark grid column choices.
-_COLUMN_LABELS = ["2", "3", "4", "6"]
-_COLUMN_VALUES = [2, 3, 4, 6]
 
 
 class SettingsPage(Adw.NavigationPage):
@@ -61,7 +56,6 @@ class SettingsPage(Adw.NavigationPage):
 
         prefs_page.add(self._build_appearance_group())
         prefs_page.add(self._build_learning_group())
-        prefs_page.add(self._build_dashboard_group())
         prefs_page.add(self._build_data_group())
 
     def _build_appearance_group(self) -> Adw.PreferencesGroup:
@@ -91,22 +85,6 @@ class SettingsPage(Adw.NavigationPage):
         )
         row.set_subtitle("Characters required in your explanation before marking a lesson done")
         row.connect("notify::value", self._on_feynman_min_changed)
-        group.add(row)
-
-        return group
-
-    def _build_dashboard_group(self) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title="Dashboard")
-
-        current_cols = Settings.get_int("bookmark_columns", 4)
-        # Default to index 2 ("4") if the stored value isn't one of the valid options.
-        col_idx = _COLUMN_VALUES.index(current_cols) if current_cols in _COLUMN_VALUES else 2
-
-        row = Adw.ComboRow(title="Bookmark Grid Columns")
-        row.set_subtitle("Number of columns in the bookmark grid on the Home page")
-        row.set_model(Gtk.StringList.new(_COLUMN_LABELS))
-        row.set_selected(col_idx)
-        row.connect("notify::selected", self._on_columns_changed)
         group.add(row)
 
         return group
@@ -146,10 +124,6 @@ class SettingsPage(Adw.NavigationPage):
 
     def _on_feynman_min_changed(self, row, _pspec):
         Settings.set("feynman_min_chars", int(row.get_value()))
-
-    def _on_columns_changed(self, row, _pspec):
-        idx = row.get_selected()
-        Settings.set("bookmark_columns", _COLUMN_VALUES[idx])
 
     def _on_delete_all(self, _btn):
         alert = Adw.AlertDialog(

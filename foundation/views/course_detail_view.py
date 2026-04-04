@@ -95,6 +95,13 @@ class CourseDetailPage(Adw.NavigationPage):
             self._content_box.remove(child)
             child = nxt
 
+        title_lbl = Gtk.Label(label=self._course.title)
+        title_lbl.add_css_class("title-1")
+        title_lbl.set_xalign(0)
+        title_lbl.set_margin_start(4)
+        title_lbl.set_margin_bottom(4)
+        self._content_box.append(title_lbl)
+
         if self._course.description:
             desc_label = Gtk.Label(label=self._course.description)
             desc_label.set_wrap(True)
@@ -117,6 +124,7 @@ class CourseDetailPage(Adw.NavigationPage):
             status.set_title("No Lessons Yet")
             status.set_description("Add your first lesson to get started.")
             status.set_icon_name("document-edit-symbolic")
+            status.set_vexpand(True)
             self._content_box.append(status)
             return
 

@@ -17,7 +17,6 @@
 # CURRENT SETTINGS KEYS:
 #   color_scheme        — "0" Follow System, "1" Light, "2" Dark
 #   feynman_min_chars   — integer string, default "50"
-#   bookmark_columns    — "2", "3", "4", or "6", default "4"
 
 from foundation.db.connection import get_connection
 

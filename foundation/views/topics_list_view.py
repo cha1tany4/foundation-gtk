@@ -88,6 +88,7 @@ class TopicsListPage(Adw.NavigationPage):
             "Create your first subject to start organising your learning."
         )
         self._status_page.set_icon_name("folder-symbolic")
+        self._status_page.set_vexpand(True)
 
         self.refresh()
 

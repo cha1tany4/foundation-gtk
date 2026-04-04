@@ -1,8 +1,14 @@
 # Database connection factory.
 #
-# Every model calls get_connection() to get a fresh SQLite connection,
-# runs its query, then closes the connection. This is intentionally simple:
-# no connection pooling, no persistent global connection.
+# get_connection() returns a persistent singleton connection that lives for the
+# entire process lifetime. Opening a new SQLite connection for every query is
+# noticeably slow inside a Flatpak sandbox because each open/close goes through
+# bubblewrap's namespace isolation and seccomp filter evaluation. A persistent
+# connection eliminates that overhead while remaining safe — the app is
+# single-threaded (GTK main loop) so there are no concurrency concerns.
+#
+# The _Connection wrapper makes close() a no-op so all callers can keep their
+# existing conn.close() calls without accidentally closing the shared connection.
 #
 # The database file lives at:
 #   ~/.local/share/foundation/foundation.db   (or $XDG_DATA_HOME/foundation/)
@@ -13,26 +19,50 @@ import sqlite3
 from pathlib import Path
 
 
+_db_path: Path | None = None
+_connection: "sqlite3.Connection | None" = None
+
+
+class _Connection:
+    """Thin wrapper that delegates everything to the real sqlite3.Connection
+    but turns close() into a no-op so the singleton is never accidentally closed."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self._conn = conn
+
+    def close(self):
+        pass  # intentional no-op: the connection is reused across queries
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
 def get_db_path() -> Path:
     """Return the path to the SQLite file, creating the directory if needed."""
-    # XDG_DATA_HOME defaults to ~/.local/share if not set in the environment.
-    xdg_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    db_dir = xdg_data / "foundation"
-    db_dir.mkdir(parents=True, exist_ok=True)
-    return db_dir / "foundation.db"
+    global _db_path
+    if _db_path is None:
+        # XDG_DATA_HOME defaults to ~/.local/share if not set in the environment.
+        xdg_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+        db_dir = xdg_data / "foundation"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        _db_path = db_dir / "foundation.db"
+    return _db_path
 
 
-def get_connection() -> sqlite3.Connection:
-    """Open and return a configured SQLite connection.
+def get_connection() -> _Connection:
+    """Return the shared database connection, creating it on the first call.
 
-    Settings applied to every connection:
+    Settings applied once at connection creation:
       WAL mode       — allows reads during a write; safer for desktop apps.
+                       Persists in the DB file, so only needs to be set once.
       foreign_keys   — enforces ON DELETE CASCADE rules defined in the schema.
-                       SQLite disables this by default; must be set per connection.
       Row factory    — row["column_name"] access instead of row[0] integer indexes.
     """
-    conn = sqlite3.connect(str(get_db_path()))
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.row_factory = sqlite3.Row
-    return conn
+    global _connection
+    if _connection is None:
+        raw = sqlite3.connect(str(get_db_path()))
+        raw.execute("PRAGMA journal_mode=WAL")
+        raw.execute("PRAGMA foreign_keys=ON")
+        raw.row_factory = sqlite3.Row
+        _connection = _Connection(raw)
+    return _connection

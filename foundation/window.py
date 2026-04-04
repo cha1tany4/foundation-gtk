@@ -86,9 +86,12 @@ class FoundationWindow(Adw.ApplicationWindow):
         self._nav_view.push(SettingsPage(self))
 
     def _switch_root(self, page: Adw.NavigationPage, name: str) -> None:
-        # If already on this root, pop any drill-down pages to return to the top.
+        # If already on this root, pop any drill-down pages to return to the top,
+        # then refresh so settings changes (e.g. bookmark columns) take effect.
         if self._current_root == name:
             self._nav_view.pop_to_page(page)
+            if hasattr(page, "refresh"):
+                page.refresh()
             return
         self._current_root = name
         # replace() discards the entire stack and sets this as the only page.

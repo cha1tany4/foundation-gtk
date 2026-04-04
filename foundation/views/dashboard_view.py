@@ -14,7 +14,6 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Gio, GObject, Gdk, Pango
 
 from foundation.models.bookmark import Bookmark, MAX_BOOKMARKS
-from foundation.db.settings import Settings
 from foundation.views._nav import build_nav_header
 
 
@@ -103,15 +102,16 @@ class DashboardPage(Adw.NavigationPage):
             status.set_title("No Bookmarks Yet")
             status.set_description('Press "New Bookmark" to add a quick-access link.')
             status.set_icon_name("starred-symbolic")
+            status.set_vexpand(True)
             self._page_box.append(status)
             return
 
-        # GtkFlowBox arranges cards in a wrapping grid.
-        # Column count is set by the user in Settings (default 4).
+        # GtkFlowBox arranges cards in a fixed 3-column grid.
         flow = Gtk.FlowBox()
+        columns = 3
         flow.set_selection_mode(Gtk.SelectionMode.NONE)
-        flow.set_max_children_per_line(Settings.get_int("bookmark_columns", 4))
-        flow.set_min_children_per_line(1)
+        flow.set_max_children_per_line(columns)
+        flow.set_min_children_per_line(columns)
         flow.set_row_spacing(8)
         flow.set_column_spacing(8)
         flow.set_homogeneous(True)
