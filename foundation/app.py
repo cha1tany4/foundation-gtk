@@ -17,6 +17,27 @@ from gi.repository import Adw, Gtk, Gdk
 from foundation.db import run_migrations
 from foundation.window import FoundationWindow
 
+
+def _preload_modules() -> None:
+    """Import all view and utility modules that are otherwise loaded lazily
+    inside handler functions.
+
+    In the Flatpak sandbox every module import involves filesystem operations
+    through bwrap. Front-loading them here means the work happens once while
+    the window is being set up rather than causing a freeze on the first click
+    of each button or navigation action.
+    """
+    import foundation.views.bookmark_form_view  # noqa: F401
+    import foundation.views.topic_form_view     # noqa: F401
+    import foundation.views.course_form_view    # noqa: F401
+    import foundation.views.lesson_form_view    # noqa: F401
+    import foundation.views.topic_detail_view   # noqa: F401
+    import foundation.views.course_detail_view  # noqa: F401
+    import foundation.views.lesson_view         # noqa: F401
+    import foundation.views.settings_view       # noqa: F401
+    import foundation.utils.csv_io              # noqa: F401
+    import foundation.utils.export              # noqa: F401
+
 # Absolute path to the directory containing foundation.svg.
 # GTK's icon theme searches this directory so the name "foundation"
 # resolves to our local SVG without a system-wide install.
@@ -41,6 +62,9 @@ class FoundationApp(Adw.Application):
         # matches what the models expect. Safe to call every launch —
         # already-applied migrations are skipped.
         run_migrations()
+
+        # Pre-load all lazily-imported modules so first-click lag is avoided.
+        _preload_modules()
 
         # Add the local icons directory to GTK's icon theme search path
         # so set_icon_name("foundation") resolves to assets/icons/foundation.svg.
