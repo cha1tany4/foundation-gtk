@@ -1,0 +1,51 @@
+{
+  "app-id": "io.github.cha1tany4.foundation",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "49",
+  "sdk": "org.gnome.Sdk",
+  "command": "foundation",
+
+  "finish-args": [
+    "--share=ipc",
+    "--socket=fallback-x11",
+    "--socket=wayland",
+    "--filesystem=xdg-documents:create",
+    "--talk-name=org.freedesktop.portal.OpenURI"
+  ],
+
+  "modules": [
+    {
+      "name": "python3-markdown",
+      "buildsystem": "simple",
+      "build-commands": [
+        "pip3 install --no-build-isolation --prefix=/app --no-deps markdown-3.10.2-py3-none-any.whl"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "url": "https://files.pythonhosted.org/packages/de/1f/77fa3081e4f66ca3576c896ae5d31c3002ac6607f9747d2e3aa49227e464/markdown-3.10.2-py3-none-any.whl",
+          "sha256": "e91464b71ae3ee7afd3017d9f358ef0baf158fd9a298db92f1d4761133824c36"
+        }
+      ]
+    },
+
+    {
+      "name": "foundation",
+      "buildsystem": "simple",
+      "build-commands": [
+        "mkdir -p /app/share/foundation",
+        "cp -r foundation main.py assets /app/share/foundation/",
+        "install -Dm755 bin/foundation /app/bin/foundation",
+        "install -Dm644 io.github.cha1tany4.foundation.desktop /app/share/applications/io.github.cha1tany4.foundation.desktop",
+        "install -Dm644 assets/icons/foundation.svg /app/share/icons/hicolor/scalable/apps/io.github.cha1tany4.foundation.svg",
+        "install -Dm644 io.github.cha1tany4.foundation.metainfo.xml /app/share/metainfo/io.github.cha1tany4.foundation.metainfo.xml"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "."
+        }
+      ]
+    }
+  ]
+}

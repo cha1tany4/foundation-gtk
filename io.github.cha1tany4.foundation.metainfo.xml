@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.cha1tany4.foundation</id>
+  <name>Foundation</name>
+  <summary>Personal learning platform using the Feynman Technique</summary>
+  <description>
+    <p>
+      Foundation helps you learn anything using the Feynman Technique.
+      Organise subjects, courses, and lessons, then prove your understanding
+      by writing explanations in your own words before marking a lesson complete.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.cha1tany4.foundation.desktop</launchable>
+  <url type="homepage">https://github.com/cha1tany4/foundation-gtk</url>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <categories>
+    <category>Education</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-04-04"/>
+  </releases>
+  <!-- Required by AppStream even if the app has no age-related content. -->
+  <content_rating type="oars-1.1"/>
+</component>

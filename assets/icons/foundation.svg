@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Book body -->
+  <rect x="22" y="14" width="84" height="100" rx="6" fill="#3584e4"/>
+  <!-- Page area -->
+  <rect x="36" y="14" width="70" height="100" rx="4" fill="#4a90d9"/>
+  <!-- Spine -->
+  <rect x="22" y="14" width="18" height="100" rx="4" fill="#1a5fb4"/>
+  <!-- Spine highlight -->
+  <rect x="22" y="14" width="4" height="100" rx="2" fill="#2166c0" opacity="0.5"/>
+  <!-- Text lines -->
+  <rect x="48" y="36" width="44" height="7" rx="3.5" fill="white" opacity="0.85"/>
+  <rect x="48" y="52" width="36" height="7" rx="3.5" fill="white" opacity="0.65"/>
+  <rect x="48" y="68" width="40" height="7" rx="3.5" fill="white" opacity="0.65"/>
+  <rect x="48" y="84" width="28" height="7" rx="3.5" fill="white" opacity="0.45"/>
+</svg>

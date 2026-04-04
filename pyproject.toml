@@ -1,0 +1,11 @@
+[project]
+name = "foundation-gtk"
+version = "0.1.0"
+description = "Foundation — Personal Learning Platform (GTK4 desktop app)"
+requires-python = ">=3.11"
+dependencies = [
+    "markdown>=3.6",
+]
+
+[project.scripts]
+foundation = "main:main"
