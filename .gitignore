@@ -1,6 +1,7 @@
 # Flatpak build artifacts
 build-dir/
 .flatpak-builder/
+flatpak-repo/
 *.flatpak
 
 # Python
