@@ -27,9 +27,7 @@ def _preload_modules() -> None:
     the window is being set up rather than causing a freeze on the first click
     of each button or navigation action.
     """
-    import foundation.views.bookmark_form_view  # noqa: F401
-    import foundation.views.topic_form_view     # noqa: F401
-    import foundation.views.course_form_view    # noqa: F401
+    import foundation.views.form_dialogs         # noqa: F401
     import foundation.views.lesson_form_view    # noqa: F401
     import foundation.views.topic_detail_view   # noqa: F401
     import foundation.views.course_detail_view  # noqa: F401

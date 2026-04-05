@@ -49,6 +49,19 @@ def get_db_path() -> Path:
     return _db_path
 
 
+def delete_all_data() -> None:
+    """Delete all rows from every user-data table.
+
+    Deletes in child-first order so the intent is clear even though
+    ON DELETE CASCADE would handle it automatically.
+    """
+    conn = get_connection()
+    for table in ("activities", "lessons", "courses", "topics", "bookmarks", "settings"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.commit()
+    conn.close()
+
+
 def get_connection() -> _Connection:
     """Return the shared database connection, creating it on the first call.
 

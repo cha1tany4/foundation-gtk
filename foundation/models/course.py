@@ -52,6 +52,22 @@ class Course:
         conn.close()
         return cls._from_row(row) if row else None
 
+    @classmethod
+    def get_lesson_counts(cls, course_ids: list[int]) -> dict[int, tuple[int, int]]:
+        """Return {course_id: (total_lessons, completed_lessons)} for the given IDs."""
+        if not course_ids:
+            return {}
+        placeholders = ",".join("?" * len(course_ids))
+        conn = get_connection()
+        rows = conn.execute(
+            f"SELECT course_id, COUNT(*) AS total, "
+            f"SUM(completed_at IS NOT NULL) AS done "
+            f"FROM lessons WHERE course_id IN ({placeholders}) GROUP BY course_id",
+            course_ids,
+        ).fetchall()
+        conn.close()
+        return {r["course_id"]: (r["total"], r["done"]) for r in rows}
+
     # ------------------------------------------------------------------
     # Mutations
     # ------------------------------------------------------------------

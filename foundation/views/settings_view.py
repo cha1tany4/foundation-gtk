@@ -1,6 +1,6 @@
 # Settings page — user preferences and data management.
 #
-# Opened by the gear icon button in the navigation header (_nav.py).
+# Opened by the gear icon button in the navigation header (_utils.py).
 # The page is an AdwNavigationPage pushed onto the navigation stack;
 # AdwNavigationView provides the back button automatically.
 #
@@ -19,7 +19,8 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 from foundation.db.settings import Settings
-from foundation.db.connection import get_connection, get_db_path
+from foundation.db.connection import get_db_path, delete_all_data
+from foundation.views._utils import confirm_destructive
 
 
 # Maps dropdown index → libadwaita color scheme constant.
@@ -126,33 +127,16 @@ class SettingsPage(Adw.NavigationPage):
         Settings.set("feynman_min_chars", int(row.get_value()))
 
     def _on_delete_all(self, _btn):
-        alert = Adw.AlertDialog(
-            heading="Delete all data?",
-            body=(
-                "This will permanently remove all subjects, courses, lessons, "
-                "bookmarks, and activity history. This cannot be undone."
-            ),
+        confirm_destructive(
+            "Delete all data?",
+            "This will permanently remove all subjects, courses, lessons, "
+            "bookmarks, and activity history. This cannot be undone.",
+            self._window,
+            self._do_delete_all,
+            confirm_label="Delete Everything",
         )
-        alert.add_response("cancel", "Cancel")
-        alert.add_response("delete", "Delete Everything")
-        alert.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
-        alert.set_default_response("cancel")
-        alert.set_close_response("cancel")
-        alert.connect("response", self._on_delete_confirmed)
-        alert.present(self._window)
 
-    def _on_delete_confirmed(self, _alert, response: str):
-        if response != "delete":
-            return
-
-        conn = get_connection()
-        # Delete child tables before parents to respect foreign key constraints,
-        # even though CASCADE handles it. Being explicit keeps the intent clear.
-        for table in ("activities", "lessons", "courses", "topics", "bookmarks", "settings"):
-            conn.execute(f"DELETE FROM {table}")
-        conn.commit()
-        conn.close()
-
-        # Navigate home so the user sees the now-empty dashboard.
+    def _do_delete_all(self):
+        delete_all_data()
         self._window.on_nav_home()
         self._window.show_toast("All data deleted.")

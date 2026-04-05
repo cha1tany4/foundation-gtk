@@ -36,6 +36,7 @@ from foundation.models.lesson import (
 )
 from foundation.db.settings import Settings
 from foundation.utils.markdown_renderer import render, render_to_buffer
+from foundation.views._utils import make_menu_button, confirm_destructive
 
 # Per-type icons used in the top pane for URL-based lessons.
 _TYPE_ICON = {
@@ -69,26 +70,10 @@ class LessonViewPage(Adw.NavigationPage):
         self._header = Adw.HeaderBar()
 
         # ⋮ menu — edit or delete the lesson
-        menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-
-        edit_btn = Gtk.Button(label="Edit Lesson")
-        edit_btn.add_css_class("flat")
-        edit_btn.connect("clicked", self._on_edit)
-        menu_box.append(edit_btn)
-
-        delete_btn = Gtk.Button(label="Delete Lesson")
-        delete_btn.add_css_class("flat")
-        delete_btn.add_css_class("destructive-action")
-        delete_btn.connect("clicked", self._on_delete)
-        menu_box.append(delete_btn)
-
-        popover = Gtk.Popover()
-        popover.set_child(menu_box)
-        popover.set_has_arrow(False)
-
-        menu_btn = Gtk.MenuButton()
-        menu_btn.set_icon_name("view-more-symbolic")
-        menu_btn.set_popover(popover)
+        menu_btn = make_menu_button([
+            ("Edit Lesson",   self._on_edit,   None),
+            ("Delete Lesson", self._on_delete, "destructive-action"),
+        ])
         self._header.pack_end(menu_btn)
 
         # "Update Explanation" button — only visible when the lesson is completed.
@@ -285,7 +270,9 @@ class LessonViewPage(Adw.NavigationPage):
 
         box.append(bottom_row)
 
-        self._feynman_view.get_buffer().connect("changed", self._on_feynman_text_changed)
+        self._feynman_view.get_buffer().connect(
+            "changed", self._make_char_counter(self._char_count_label, self._submit_btn)
+        )
 
         return box
 
@@ -375,7 +362,9 @@ class LessonViewPage(Adw.NavigationPage):
         edit_box.append(save_row)
         self._notes_stack.add_named(edit_box, "edit")
 
-        self._notes_edit_view.get_buffer().connect("changed", self._on_notes_text_changed)
+        self._notes_edit_view.get_buffer().connect(
+            "changed", self._make_char_counter(self._notes_char_label, self._save_notes_btn)
+        )
 
         return box
 
@@ -410,19 +399,14 @@ class LessonViewPage(Adw.NavigationPage):
     # Signal handlers
     # ------------------------------------------------------------------
 
-    def _on_feynman_text_changed(self, buf):
-        min_chars = Settings.get_int("feynman_min_chars", FEYNMAN_MIN_CHARS)
-        text = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
-        n = len(text.strip())
-        self._char_count_label.set_text(f"{n} / {min_chars} characters minimum")
-        self._submit_btn.set_sensitive(n >= min_chars)
-
-    def _on_notes_text_changed(self, buf):
-        min_chars = Settings.get_int("feynman_min_chars", FEYNMAN_MIN_CHARS)
-        text = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
-        n = len(text.strip())
-        self._notes_char_label.set_text(f"{n} / {min_chars} characters minimum")
-        self._save_notes_btn.set_sensitive(n >= min_chars)
+    def _make_char_counter(self, label: Gtk.Label, button: Gtk.Button):
+        """Return a TextBuffer 'changed' handler that keeps a char count label in sync."""
+        def on_changed(buf):
+            min_chars = Settings.get_int("feynman_min_chars", FEYNMAN_MIN_CHARS)
+            n = len(buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False).strip())
+            label.set_text(f"{n} / {min_chars} characters minimum")
+            button.set_sensitive(n >= min_chars)
+        return on_changed
 
     def _on_toggle_notes_edit(self, _btn):
         """Toggle between display and edit mode for the Feynman notes."""
@@ -455,8 +439,8 @@ class LessonViewPage(Adw.NavigationPage):
                 if url.startswith("/"):
                     url = Gio.File.new_for_path(url).get_uri()
                 Gio.AppInfo.launch_default_for_uri(url, None)
-            except Exception:
-                pass
+            except GLib.Error:
+                self._window.show_toast("Could not open the resource.")
         self._sync_action_state()
 
     def _on_submit(self, _btn):
@@ -500,21 +484,14 @@ class LessonViewPage(Adw.NavigationPage):
             self._on_lesson_changed(self._lesson)
 
     def _on_delete(self, _btn):
-        alert = Adw.AlertDialog(
-            heading="Delete Lesson?",
-            body=f'"{self._lesson.title}" will be permanently deleted.',
+        confirm_destructive(
+            "Delete Lesson?",
+            f'"{self._lesson.title}" will be permanently deleted.',
+            self._window,
+            self._do_delete_lesson,
         )
-        alert.add_response("cancel", "Cancel")
-        alert.add_response("delete", "Delete")
-        alert.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
-        alert.set_default_response("cancel")
-        alert.set_close_response("cancel")
-        alert.connect("response", self._on_delete_confirmed)
-        alert.present(self._window)
 
-    def _on_delete_confirmed(self, _alert, response: str):
-        if response != "delete":
-            return
+    def _do_delete_lesson(self):
         self._lesson.delete()
         self._window.show_toast(f'Lesson "{self._lesson.title}" deleted.')
         self._window.nav_view.pop()

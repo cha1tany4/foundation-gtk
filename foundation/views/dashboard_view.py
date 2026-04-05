@@ -14,7 +14,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Gio, GObject, Gdk, Pango
 
 from foundation.models.bookmark import Bookmark, MAX_BOOKMARKS
-from foundation.views._nav import build_nav_header
+from foundation.views._utils import build_nav_header, clear_children, make_menu_button, confirm_destructive
 
 
 class DashboardPage(Adw.NavigationPage):
@@ -42,28 +42,11 @@ class DashboardPage(Adw.NavigationPage):
         add_btn.connect("clicked", self._on_add_bookmark)
         header.pack_end(add_btn)
 
-        # Import/Export menu for bookmarks — sits to the left of the "+" button.
-        # To add more bookmark actions, append another Gtk.Button to menu_box here.
-        bm_menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-
-        bm_import_btn = Gtk.Button(label="Import Bookmarks (CSV)")
-        bm_import_btn.add_css_class("flat")
-        bm_import_btn.connect("clicked", self._on_import_bookmarks)
-        bm_menu_box.append(bm_import_btn)
-
-        bm_export_btn = Gtk.Button(label="Export Bookmarks (CSV)")
-        bm_export_btn.add_css_class("flat")
-        bm_export_btn.connect("clicked", self._on_export_bookmarks)
-        bm_menu_box.append(bm_export_btn)
-
-        bm_popover = Gtk.Popover()
-        bm_popover.set_child(bm_menu_box)
-        bm_popover.set_has_arrow(False)
-
-        bm_menu_btn = Gtk.MenuButton()
-        bm_menu_btn.set_icon_name("view-more-symbolic")
-        bm_menu_btn.set_popover(bm_popover)
-        bm_menu_btn.add_css_class("flat")
+        # Import/Export menu for bookmarks — sits to the left of the "New Bookmark" button.
+        bm_menu_btn = make_menu_button([
+            ("Import Bookmarks (CSV)", self._on_import_bookmarks, None),
+            ("Export Bookmarks (CSV)", self._on_export_bookmarks, None),
+        ], flat=True)
         header.pack_end(bm_menu_btn)
 
         toolbar_view.add_top_bar(header)
@@ -83,11 +66,7 @@ class DashboardPage(Adw.NavigationPage):
 
     def refresh(self):
         """Reload bookmarks from the database and rebuild the grid."""
-        child = self._page_box.get_first_child()
-        while child:
-            nxt = child.get_next_sibling()
-            self._page_box.remove(child)
-            child = nxt
+        clear_children(self._page_box)
 
         self._bookmarks = Bookmark.all()
         self._build_bookmarks_section()
@@ -250,31 +229,24 @@ class DashboardPage(Adw.NavigationPage):
         if Bookmark.count() >= MAX_BOOKMARKS:
             self._window.show_toast(f"Dashboard full — maximum {MAX_BOOKMARKS} bookmarks.")
             return
-        from foundation.views.bookmark_form_view import BookmarkFormDialog
+        from foundation.views.form_dialogs import BookmarkFormDialog
         dialog = BookmarkFormDialog(on_success=self.refresh)
         dialog.present(self._window)
 
     def _on_edit_bookmark(self, _btn, bm: Bookmark):
-        from foundation.views.bookmark_form_view import BookmarkFormDialog
+        from foundation.views.form_dialogs import BookmarkFormDialog
         dialog = BookmarkFormDialog(bookmark=bm, on_success=self.refresh)
         dialog.present(self._window)
 
     def _on_delete_bookmark(self, _btn, bm: Bookmark):
-        alert = Adw.AlertDialog(
-            heading="Delete Bookmark?",
-            body=f'"{bm.name}" will be removed from your dashboard.',
+        confirm_destructive(
+            "Delete Bookmark?",
+            f'"{bm.name}" will be removed from your dashboard.',
+            self._window,
+            lambda: self._do_delete_bookmark(bm),
         )
-        alert.add_response("cancel", "Cancel")
-        alert.add_response("delete", "Delete")
-        alert.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
-        alert.set_default_response("cancel")
-        alert.set_close_response("cancel")
-        alert.connect("response", self._on_delete_confirmed, bm)
-        alert.present(self._window)
 
-    def _on_delete_confirmed(self, _alert, response: str, bm: Bookmark):
-        if response != "delete":
-            return
+    def _do_delete_bookmark(self, bm: Bookmark):
         bm.delete()
         self._window.show_toast(f'"{bm.name}" removed.')
         self.refresh()

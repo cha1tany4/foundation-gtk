@@ -12,8 +12,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw
 
 from foundation.models.topic import Topic
-from foundation.db.connection import get_connection
-from foundation.views._nav import build_nav_header
+from foundation.views._utils import build_nav_header, clear_children, make_menu_button
 
 
 class TopicsListPage(Adw.NavigationPage):
@@ -40,27 +39,10 @@ class TopicsListPage(Adw.NavigationPage):
         header.pack_end(new_btn)
 
         # Import/Export menu — sits to the left of the "New Subject" button.
-        # To add more CSV actions, append another Gtk.Button to menu_box here.
-        menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-
-        import_btn = Gtk.Button(label="Import Subjects (CSV)")
-        import_btn.add_css_class("flat")
-        import_btn.connect("clicked", self._on_import_subjects)
-        menu_box.append(import_btn)
-
-        export_btn = Gtk.Button(label="Export Subjects (CSV)")
-        export_btn.add_css_class("flat")
-        export_btn.connect("clicked", self._on_export_subjects)
-        menu_box.append(export_btn)
-
-        popover = Gtk.Popover()
-        popover.set_child(menu_box)
-        popover.set_has_arrow(False)
-
-        menu_btn = Gtk.MenuButton()
-        menu_btn.set_icon_name("view-more-symbolic")
-        menu_btn.set_popover(popover)
-        menu_btn.add_css_class("flat")
+        menu_btn = make_menu_button([
+            ("Import Subjects (CSV)", self._on_import_subjects, None),
+            ("Export Subjects (CSV)", self._on_export_subjects, None),
+        ], flat=True)
         header.pack_end(menu_btn)
 
         toolbar_view.add_top_bar(header)
@@ -79,7 +61,6 @@ class TopicsListPage(Adw.NavigationPage):
         self._list_box = Gtk.ListBox()
         self._list_box.set_selection_mode(Gtk.SelectionMode.NONE)
         self._list_box.add_css_class("boxed-list")
-        self._list_box.connect("row-activated", self._on_topic_activated)
 
         self._status_page = Adw.StatusPage()
         self._status_page.set_title("No Subjects Yet")
@@ -93,12 +74,7 @@ class TopicsListPage(Adw.NavigationPage):
 
     def refresh(self):
         """Reload topics from the database and rebuild the list."""
-        # Remove all current children from the content box.
-        child = self._content_box.get_first_child()
-        while child:
-            nxt = child.get_next_sibling()
-            self._content_box.remove(child)
-            child = nxt
+        clear_children(self._content_box)
 
         topics = Topic.all()
 
@@ -106,26 +82,9 @@ class TopicsListPage(Adw.NavigationPage):
             self._content_box.append(self._status_page)
             return
 
-        # One aggregation query for all topics — avoids N+1.
-        conn = get_connection()
-        count_rows = conn.execute("""
-            SELECT t.id AS topic_id,
-                   COUNT(DISTINCT c.id) AS course_count,
-                   COUNT(l.id)          AS lesson_count
-            FROM topics t
-            LEFT JOIN courses c ON c.topic_id = t.id
-            LEFT JOIN lessons l ON l.course_id = c.id
-            GROUP BY t.id
-        """).fetchall()
-        conn.close()
-        counts = {r["topic_id"]: (r["course_count"], r["lesson_count"]) for r in count_rows}
+        counts = Topic.get_course_lesson_counts()
 
-        # Remove all current rows from the list box before repopulating.
-        row = self._list_box.get_first_child()
-        while row:
-            nxt = row.get_next_sibling()
-            self._list_box.remove(row)
-            row = nxt
+        clear_children(self._list_box)
 
         for topic in topics:
             self._list_box.append(self._build_topic_row(topic, counts))
@@ -141,8 +100,7 @@ class TopicsListPage(Adw.NavigationPage):
         row.set_title(topic.title)
         row.set_subtitle(subtitle)
         row.set_activatable(True)
-        # Store the topic on the row so _on_topic_activated can retrieve it.
-        row._topic = topic
+        row.connect("activated", lambda _r, t=topic: self._open_topic(t))
 
         chevron = Gtk.Image.new_from_icon_name("go-next-symbolic")
         row.add_suffix(chevron)
@@ -158,7 +116,7 @@ class TopicsListPage(Adw.NavigationPage):
         self._on_new_topic(None)
 
     def _on_new_topic(self, _btn):
-        from foundation.views.topic_form_view import TopicFormDialog
+        from foundation.views.form_dialogs import TopicFormDialog
         dialog = TopicFormDialog(on_success=self.refresh)
         dialog.present(self._window)
 
@@ -170,8 +128,7 @@ class TopicsListPage(Adw.NavigationPage):
         from foundation.utils.csv_io import export_subjects
         export_subjects(self._window)
 
-    def _on_topic_activated(self, _list_box, row):
-        topic = row._topic
+    def _open_topic(self, topic):
         from foundation.views.topic_detail_view import TopicDetailPage
         page = TopicDetailPage(topic, self._window, on_topic_changed=self.refresh)
         self._window.nav_view.push(page)

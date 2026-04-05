@@ -14,7 +14,7 @@ from gi.repository import Gtk, Adw
 
 from foundation.models.topic import Topic
 from foundation.models.course import Course
-from foundation.db.connection import get_connection
+from foundation.views._utils import clear_children, make_menu_button, confirm_destructive
 
 
 class TopicDetailPage(Adw.NavigationPage):
@@ -39,26 +39,10 @@ class TopicDetailPage(Adw.NavigationPage):
 
         # ⋮ menu — edit or delete the topic
         # Packed first so it appears rightmost (pack_end stacks right-to-left).
-        menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-
-        edit_btn = Gtk.Button(label="Edit Subject")
-        edit_btn.add_css_class("flat")
-        edit_btn.connect("clicked", self._on_edit_topic)
-        menu_box.append(edit_btn)
-
-        delete_btn = Gtk.Button(label="Delete Subject")
-        delete_btn.add_css_class("flat")
-        delete_btn.add_css_class("destructive-action")
-        delete_btn.connect("clicked", self._on_delete_topic)
-        menu_box.append(delete_btn)
-
-        popover = Gtk.Popover()
-        popover.set_child(menu_box)
-        popover.set_has_arrow(False)
-
-        more_btn = Gtk.MenuButton()
-        more_btn.set_icon_name("view-more-symbolic")
-        more_btn.set_popover(popover)
+        more_btn = make_menu_button([
+            ("Edit Subject",   self._on_edit_topic,   None),
+            ("Delete Subject", self._on_delete_topic, "destructive-action"),
+        ])
         header.pack_end(more_btn)
 
         # Primary action packed second — appears to the left of ⋮.
@@ -84,11 +68,7 @@ class TopicDetailPage(Adw.NavigationPage):
 
     def _populate(self):
         """Clear and rebuild the course list. Called on first build and after changes."""
-        child = self._content_box.get_first_child()
-        while child:
-            nxt = child.get_next_sibling()
-            self._content_box.remove(child)
-            child = nxt
+        clear_children(self._content_box)
 
         title_lbl = Gtk.Label(label=self._topic.title)
         title_lbl.add_css_class("title-1")
@@ -119,24 +99,12 @@ class TopicDetailPage(Adw.NavigationPage):
         group = Adw.PreferencesGroup(title="Courses")
         self._content_box.append(group)
 
-        # One aggregation query for all courses — avoids N+1.
-        course_ids = [c.id for c in courses]
-        placeholders = ",".join("?" * len(course_ids))
-        conn = get_connection()
-        rows = conn.execute(
-            f"SELECT course_id, COUNT(*) AS total, "
-            f"SUM(completed_at IS NOT NULL) AS done "
-            f"FROM lessons WHERE course_id IN ({placeholders}) GROUP BY course_id",
-            course_ids,
-        ).fetchall()
-        conn.close()
-        lesson_counts = {r["course_id"]: (r["total"], r["done"]) for r in rows}
+        lesson_counts = Course.get_lesson_counts([c.id for c in courses])
 
         # GtkListBox inside the PreferencesGroup so rows get the boxed-list style.
         list_box = Gtk.ListBox()
         list_box.set_selection_mode(Gtk.SelectionMode.NONE)
         list_box.add_css_class("boxed-list")
-        list_box.connect("row-activated", self._on_course_row_activated)
         group.add(list_box)
 
         for course in courses:
@@ -153,7 +121,7 @@ class TopicDetailPage(Adw.NavigationPage):
         if course.description:
             row.set_subtitle(course.description)
         row.set_activatable(True)
-        row._course = course   # stored so _on_course_row_activated can access it
+        row.connect("activated", lambda _r, c=course: self._open_course(c))
 
         # Progress bar and count on the right side of the row.
         right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -184,40 +152,33 @@ class TopicDetailPage(Adw.NavigationPage):
         self._on_new_course(None)
 
     def _on_new_course(self, _btn):
-        from foundation.views.course_form_view import CourseFormDialog
+        from foundation.views.form_dialogs import CourseFormDialog
         dialog = CourseFormDialog(topic_id=self._topic.id, on_success=self._populate)
         dialog.present(self._window)
 
     def _on_edit_topic(self, _btn):
-        from foundation.views.topic_form_view import TopicFormDialog
+        from foundation.views.form_dialogs import TopicFormDialog
         dialog = TopicFormDialog(topic=self._topic, on_success=self._after_topic_edit)
         dialog.present(self._window)
 
     def _on_delete_topic(self, _btn):
-        alert = Adw.AlertDialog(
-            heading="Delete Subject?",
-            body=f'"{self._topic.title}" and all its courses and lessons will be permanently deleted.',
+        confirm_destructive(
+            "Delete Subject?",
+            f'"{self._topic.title}" and all its courses and lessons will be permanently deleted.',
+            self._window,
+            self._do_delete_topic,
         )
-        alert.add_response("cancel", "Cancel")
-        alert.add_response("delete", "Delete")
-        alert.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
-        alert.set_default_response("cancel")
-        alert.set_close_response("cancel")
-        alert.connect("response", self._on_delete_confirmed)
-        alert.present(self._window)
 
-    def _on_delete_confirmed(self, _alert, response: str):
-        if response != "delete":
-            return
+    def _do_delete_topic(self):
         self._topic.delete()
         self._window.show_toast(f'Subject "{self._topic.title}" deleted.')
         self._window.nav_view.pop()
         if self._on_topic_changed:
             self._on_topic_changed()
 
-    def _on_course_row_activated(self, _list_box, row):
+    def _open_course(self, course):
         from foundation.views.course_detail_view import CourseDetailPage
-        page = CourseDetailPage(row._course, self._window, on_course_changed=self._populate)
+        page = CourseDetailPage(course, self._window, on_course_changed=self._populate)
         self._window.nav_view.push(page)
 
     def _after_topic_edit(self):

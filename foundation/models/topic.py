@@ -47,6 +47,22 @@ class Topic:
         conn.close()
         return cls._from_row(row) if row else None
 
+    @classmethod
+    def get_course_lesson_counts(cls) -> dict[int, tuple[int, int]]:
+        """Return {topic_id: (course_count, lesson_count)} for all topics in one query."""
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT t.id AS topic_id,
+                   COUNT(DISTINCT c.id) AS course_count,
+                   COUNT(l.id)          AS lesson_count
+            FROM topics t
+            LEFT JOIN courses c ON c.topic_id = t.id
+            LEFT JOIN lessons l ON l.course_id = c.id
+            GROUP BY t.id
+        """).fetchall()
+        conn.close()
+        return {r["topic_id"]: (r["course_count"], r["lesson_count"]) for r in rows}
+
     # ------------------------------------------------------------------
     # Mutations
     # ------------------------------------------------------------------

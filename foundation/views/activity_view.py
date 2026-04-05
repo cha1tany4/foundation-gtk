@@ -19,7 +19,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Gio, GObject, Pango
 
 from foundation.models.activity import Activity
-from foundation.views._nav import build_nav_header
+from foundation.views._utils import build_nav_header, clear_children
 
 
 class ActivityItem(GObject.Object):
@@ -49,7 +49,7 @@ def _fmt_date(sqlite_dt: str) -> str:
         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         return f"{int(day)} {months[int(month_num) - 1]} {year}, {hour}:{minute}"
-    except Exception:
+    except (ValueError, AttributeError):
         return sqlite_dt
 
 
@@ -213,12 +213,7 @@ class ActivityLogPage(Adw.NavigationPage):
 
     def refresh(self):
         """Reload activities from the database and rebuild the table."""
-        # Remove whichever child is currently shown (status page or column view).
-        child = self._outer_box.get_first_child()
-        while child:
-            nxt = child.get_next_sibling()
-            self._outer_box.remove(child)
-            child = nxt
+        clear_children(self._outer_box)
 
         activities = Activity.all()
 

@@ -15,6 +15,7 @@ from gi.repository import Gtk, Adw
 
 from foundation.models.course import Course
 from foundation.models.lesson import Lesson
+from foundation.views._utils import clear_children, make_menu_button, confirm_destructive
 
 
 class CourseDetailPage(Adw.NavigationPage):
@@ -39,31 +40,11 @@ class CourseDetailPage(Adw.NavigationPage):
 
         # ⋮ menu — export, edit, or delete the course
         # Packed first so it appears rightmost (pack_end stacks right-to-left).
-        menu_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-
-        export_btn = Gtk.Button(label="Export to Markdown")
-        export_btn.add_css_class("flat")
-        export_btn.connect("clicked", self._on_export)
-        menu_box.append(export_btn)
-
-        edit_btn = Gtk.Button(label="Edit Course")
-        edit_btn.add_css_class("flat")
-        edit_btn.connect("clicked", self._on_edit)
-        menu_box.append(edit_btn)
-
-        delete_btn = Gtk.Button(label="Delete Course")
-        delete_btn.add_css_class("flat")
-        delete_btn.add_css_class("destructive-action")
-        delete_btn.connect("clicked", self._on_delete)
-        menu_box.append(delete_btn)
-
-        popover = Gtk.Popover()
-        popover.set_child(menu_box)
-        popover.set_has_arrow(False)
-
-        menu_btn = Gtk.MenuButton()
-        menu_btn.set_icon_name("view-more-symbolic")
-        menu_btn.set_popover(popover)
+        menu_btn = make_menu_button([
+            ("Export to Markdown", self._on_export, None),
+            ("Edit Course",        self._on_edit,   None),
+            ("Delete Course",      self._on_delete, "destructive-action"),
+        ])
         header.pack_end(menu_btn)
 
         # Primary action packed second — appears to the left of ⋮.
@@ -89,11 +70,7 @@ class CourseDetailPage(Adw.NavigationPage):
 
     def _populate(self):
         """Clear and rebuild the lesson list. Called on first build and after changes."""
-        child = self._content_box.get_first_child()
-        while child:
-            nxt = child.get_next_sibling()
-            self._content_box.remove(child)
-            child = nxt
+        clear_children(self._content_box)
 
         title_lbl = Gtk.Label(label=self._course.title)
         title_lbl.add_css_class("title-1")
@@ -199,26 +176,19 @@ class CourseDetailPage(Adw.NavigationPage):
         self._populate()
 
     def _on_edit(self, _btn):
-        from foundation.views.course_form_view import CourseFormDialog
+        from foundation.views.form_dialogs import CourseFormDialog
         dialog = CourseFormDialog(course=self._course, on_success=self._after_change)
         dialog.present(self._window)
 
     def _on_delete(self, _btn):
-        alert = Adw.AlertDialog(
-            heading="Delete Course?",
-            body=f'"{self._course.title}" and all its lessons will be permanently deleted.',
+        confirm_destructive(
+            "Delete Course?",
+            f'"{self._course.title}" and all its lessons will be permanently deleted.',
+            self._window,
+            self._do_delete_course,
         )
-        alert.add_response("cancel", "Cancel")
-        alert.add_response("delete", "Delete")
-        alert.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
-        alert.set_default_response("cancel")
-        alert.set_close_response("cancel")
-        alert.connect("response", self._on_delete_confirmed)
-        alert.present(self._window)
 
-    def _on_delete_confirmed(self, _alert, response: str):
-        if response != "delete":
-            return
+    def _do_delete_course(self):
         self._course.delete()
         self._window.show_toast(f'Course "{self._course.title}" deleted.')
         self._window.nav_view.pop()

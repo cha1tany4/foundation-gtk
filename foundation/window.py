@@ -8,7 +8,7 @@
 #
 # Each root page (Dashboard, Topics, Activity) owns its own AdwHeaderBar,
 # which includes the Home / All Subjects / Study Log nav buttons via
-# the build_nav_header() helper in foundation/views/_nav.py.
+# the build_nav_header() helper in foundation/views/_utils.py.
 #
 # Drill-down pages (topic detail, course detail, lesson view) each have their
 # own AdwHeaderBar with a back button auto-provided by AdwNavigationView.
